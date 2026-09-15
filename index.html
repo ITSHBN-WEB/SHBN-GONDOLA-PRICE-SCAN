@@ -10,6 +10,7 @@
   h2{text-align:center;margin-top:0}
   button{width:100%;padding:14px;margin-top:12px;font-size:16px;border:none;border-radius:8px;background:#1a73e8;color:#fff;font-weight:bold;cursor:pointer}
   button:active{opacity:.85}
+  button:disabled{opacity:.6;cursor:default}
   input,select{width:100%;padding:12px;border:1px solid #ccc;border-radius:8px;box-sizing:border-box;margin-top:5px;font-size:15px}
   label{display:block;margin-top:14px;font-weight:bold}
   #status{display:none;margin-top:15px;padding:10px;border-radius:8px;text-align:center}
@@ -17,6 +18,7 @@
   .error{background:#f8d7da;color:#721c24}
   .smallBtn{background:#666}
   .dangerBtn{background:#c0392b}
+  .refreshBtn{background:#e3e9f2;color:#1a3d7c;margin-bottom:0}
   .view{display:none}
   .view.active{display:block}
 
@@ -29,6 +31,7 @@
   .listItem{width:100%;text-align:left;padding:14px;margin-top:10px;border-radius:8px;background:#eef2fa;color:#12305c;font-weight:bold;border:1px solid #d5dcec}
   .listItem .count{float:right;background:#1a73e8;color:#fff;border-radius:12px;padding:2px 10px;font-size:13px;font-weight:normal}
   .empty{text-align:center;color:#888;padding:20px 0}
+  .loading{text-align:center;color:#888;padding:20px 0}
 
   /* filter chips */
   .chipRow{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
@@ -41,6 +44,8 @@
   .tableWrap{overflow-x:auto}
 
   .backBtn{background:#666;margin-bottom:0}
+  .rowBtns{display:flex;gap:8px}
+  .rowBtns button{margin-top:0}
 </style>
 </head>
 <body>
@@ -71,20 +76,26 @@
   <label>Quantity</label>
   <input id="quantity" type="number" value="1" min="1">
 
-  <button onclick="submitForm()">Submit</button>
+  <button id="submitBtn" onclick="submitForm()">Submit</button>
 
   <div id="status"></div>
 </div>
 
 <!-- IT ENTRY: STAFF LIST -->
 <div id="view-it-list" class="view card">
-  <h2>IT Entry</h2>
+  <div class="rowBtns">
+    <h2 style="flex:1">IT Entry</h2>
+  </div>
+  <button class="refreshBtn" onclick="showITList()">&#8635; Refresh</button>
   <div id="staffListContainer"></div>
 </div>
 
 <!-- IT ENTRY: STAFF DETAIL -->
 <div id="view-it-detail" class="view card">
-  <button class="backBtn" onclick="showITList()">&larr; Back to Staff List</button>
+  <div class="rowBtns">
+    <button class="backBtn" onclick="showITList()">&larr; Back</button>
+    <button class="refreshBtn" onclick="renderStaffDetail(true)">&#8635; Refresh</button>
+  </div>
   <h2 id="itStaffName"></h2>
 
   <label>Filter by Quantity</label>
@@ -110,63 +121,43 @@
 //========================================
 // CONFIG
 //========================================
+// Paste the /exec URL from your deployed Apps Script Web App below.
+const API_URL = "https://script.google.com/macros/s/AKfycby4vP80h3Q7TSiw7zCcDhvujS7M-t9qn7GKcKdF3DPV6wJ1a57O6Ai78LG11sImPYc/exec";
+
 const DEPARTMENTS = ["Food", "Nonfood", "Fresh Market", "Hardline", "Softline"];
-const ENTRIES_KEY = "shbn_entries";
 
 let currentDepartment = "";
 let currentStaff = "";
 let currentQtyFilter = null; // null = All
+let entriesCache = [];
 
 //========================================
-// STORAGE HELPERS
+// SERVER HELPERS
 //========================================
-function loadEntries() {
-  try {
-    return JSON.parse(localStorage.getItem(ENTRIES_KEY)) || [];
-  } catch (e) {
-    return [];
-  }
+async function fetchEntries() {
+  const res = await fetch(API_URL + "?action=list");
+  const data = await res.json();
+  if (!data.success) throw new Error(data.message || "Failed to load data.");
+  entriesCache = data.entries || [];
+  return entriesCache;
 }
 
-function saveEntries(list) {
-  localStorage.setItem(ENTRIES_KEY, JSON.stringify(list));
-}
-
-function addEntry(entry) {
-  const list = loadEntries();
-  list.push(entry);
-  saveEntries(list);
+async function postToServer(payload) {
+  const res = await fetch(API_URL, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify(payload)
+  });
+  return res.json();
 }
 
 function getStaffNames() {
-  const list = loadEntries();
-  const names = [...new Set(list.map(e => e.staffName))];
+  const names = [...new Set(entriesCache.map(e => e.staffName))];
   return names.sort((a, b) => a.localeCompare(b));
 }
 
 function getEntriesForStaff(name) {
-  return loadEntries().filter(e => e.staffName === name);
-}
-
-function clearStaffEntries(name) {
-  const list = loadEntries().filter(e => e.staffName !== name);
-  saveEntries(list);
-}
-
-//========================================
-// TIMESTAMP
-//========================================
-function formatTimestamp(date) {
-  const d = date.getDate();
-  const m = date.getMonth() + 1;
-  const y = date.getFullYear();
-  let h = date.getHours();
-  const min = date.getMinutes();
-  const ampm = h >= 12 ? "pm" : "am";
-  h = h % 12;
-  if (h === 0) h = 12;
-  const minStr = min < 10 ? "0" + min : "" + min;
-  return `${d}.${m}.${y} ${h}.${minStr}${ampm}`;
+  return entriesCache.filter(e => e.staffName === name);
 }
 
 //========================================
@@ -202,12 +193,17 @@ function initDeptButtons() {
   });
 }
 
-function selectDepartment(dept) {
+async function selectDepartment(dept) {
   currentDepartment = dept;
   document.getElementById("deptName").textContent = dept;
   document.getElementById("status").style.display = "none";
-  refreshStaffDatalist();
   showView("view-dept-form");
+  try {
+    await fetchEntries();
+    refreshStaffDatalist();
+  } catch (e) {
+    // datalist just won't have suggestions if this fails; not fatal
+  }
 }
 
 function showDeptSelect() {
@@ -224,7 +220,7 @@ function refreshStaffDatalist() {
   });
 }
 
-function submitForm() {
+async function submitForm() {
   const status = document.getElementById("status");
   status.style.display = "none";
 
@@ -242,36 +238,57 @@ function submitForm() {
     return showStatus(status, false, "Quantity must be at least 1.");
   }
 
-  const timestamp = formatTimestamp(new Date());
+  const submitBtn = document.getElementById("submitBtn");
+  submitBtn.disabled = true;
+  submitBtn.textContent = "Submitting...";
 
-  addEntry({
-    staffName,
-    department: currentDepartment,
-    productCode,
-    quantity,
-    timestamp
-  });
+  try {
+    const result = await postToServer({
+      action: "submit",
+      staffName,
+      department: currentDepartment,
+      productCode,
+      quantity
+    });
 
-  showStatus(status, true, "Entry submitted! (" + timestamp + ")");
-
-  document.getElementById("productCode").value = "";
-  document.getElementById("quantity").value = 1;
-  document.getElementById("productCode").focus();
+    if (result.success) {
+      showStatus(status, true, result.message + " (" + result.timestamp + ")");
+      document.getElementById("productCode").value = "";
+      document.getElementById("quantity").value = 1;
+      document.getElementById("productCode").focus();
+    } else {
+      showStatus(status, false, result.message);
+    }
+  } catch (e) {
+    showStatus(status, false, "Connection error. Please try again.");
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.textContent = "Submit";
+  }
 }
 
 function showStatus(el, success, message) {
   el.style.display = "block";
   el.className = success ? "success" : "error";
-  el.innerHTML = (success ? "✓ " : "✗ ") + message;
+  el.innerHTML = (success ? "\u2713 " : "\u2717 ") + message;
 }
 
 //========================================
 // IT ENTRY: STAFF LIST
 //========================================
-function showITList() {
+async function showITList() {
+  showView("view-it-list");
   const container = document.getElementById("staffListContainer");
-  container.innerHTML = "";
+  container.innerHTML = '<div class="loading">Loading...</div>';
 
+  try {
+    await fetchEntries();
+  } catch (e) {
+    container.innerHTML = '<div class="empty">Could not load data. Check your connection and tap Refresh.</div>';
+    return;
+  }
+
+  container.innerHTML = "";
   const names = getStaffNames();
 
   if (names.length === 0) {
@@ -281,13 +298,11 @@ function showITList() {
       const count = getEntriesForStaff(name).length;
       const b = document.createElement("button");
       b.className = "listItem";
-      b.innerHTML = name + '<span class="count">' + count + "</span>";
+      b.innerHTML = escapeHtml(name) + '<span class="count">' + count + "</span>";
       b.onclick = () => openStaffDetail(name);
       container.appendChild(b);
     });
   }
-
-  showView("view-it-list");
 }
 
 //========================================
@@ -298,11 +313,24 @@ function openStaffDetail(name) {
   currentQtyFilter = null;
   document.getElementById("itStaffName").textContent = name;
   document.getElementById("itStatus").style.display = "none";
-  renderStaffDetail();
   showView("view-it-detail");
+  renderStaffDetail(false);
 }
 
-function renderStaffDetail() {
+async function renderStaffDetail(refetch) {
+  if (refetch) {
+    document.getElementById("entryRows").innerHTML = "";
+    document.getElementById("itEmpty").style.display = "none";
+    try {
+      await fetchEntries();
+    } catch (e) {
+      document.getElementById("itStatus").style.display = "block";
+      document.getElementById("itStatus").className = "error";
+      document.getElementById("itStatus").innerHTML = "\u2717 Could not refresh. Check your connection.";
+      return;
+    }
+  }
+
   const entries = getEntriesForStaff(currentStaff);
 
   // quantity filter chips
@@ -313,14 +341,14 @@ function renderStaffDetail() {
   const allChip = document.createElement("div");
   allChip.className = "chip" + (currentQtyFilter === null ? " active" : "");
   allChip.textContent = "All";
-  allChip.onclick = () => { currentQtyFilter = null; renderStaffDetail(); };
+  allChip.onclick = () => { currentQtyFilter = null; renderStaffDetail(false); };
   chipRow.appendChild(allChip);
 
   quantities.forEach(q => {
     const chip = document.createElement("div");
     chip.className = "chip" + (currentQtyFilter === q ? " active" : "");
     chip.textContent = "Qty " + q;
-    chip.onclick = () => { currentQtyFilter = q; renderStaffDetail(); };
+    chip.onclick = () => { currentQtyFilter = q; renderStaffDetail(false); };
     chipRow.appendChild(chip);
   });
 
@@ -365,19 +393,19 @@ function copyBatch() {
   if (filtered.length === 0) {
     status.style.display = "block";
     status.className = "error";
-    status.innerHTML = "✗ Nothing to copy for this filter.";
+    status.innerHTML = "\u2717 Nothing to copy for this filter.";
     return;
   }
 
   const done = () => {
     status.style.display = "block";
     status.className = "success";
-    status.innerHTML = "✓ Copied " + filtered.length + " product code(s).";
+    status.innerHTML = "\u2713 Copied " + filtered.length + " product code(s).";
   };
   const fail = () => {
     status.style.display = "block";
     status.className = "error";
-    status.innerHTML = "✗ Could not copy automatically. Long-press to copy manually.";
+    status.innerHTML = "\u2717 Could not copy automatically. Long-press to copy manually.";
   };
 
   if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -399,21 +427,33 @@ function copyBatch() {
   }
 }
 
-function clearStaffData() {
+async function clearStaffData() {
   const confirmed = confirm(
     "Clear ALL submitted data for \"" + currentStaff + "\"? This cannot be undone."
   );
   if (!confirmed) return;
 
-  clearStaffEntries(currentStaff);
-  showITList();
+  const status = document.getElementById("itStatus");
+  try {
+    const result = await postToServer({ action: "clearStaff", staffName: currentStaff });
+    if (!result.success) {
+      status.style.display = "block";
+      status.className = "error";
+      status.innerHTML = "\u2717 " + (result.message || "Could not clear data.");
+      return;
+    }
+    showITList();
+  } catch (e) {
+    status.style.display = "block";
+    status.className = "error";
+    status.innerHTML = "\u2717 Connection error. Please try again.";
+  }
 }
 
 //========================================
 // INIT
 //========================================
 initDeptButtons();
-refreshStaffDatalist();
 </script>
 
 </body>
