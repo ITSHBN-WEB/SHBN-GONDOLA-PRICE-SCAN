@@ -101,6 +101,11 @@
   <label>Filter by Quantity</label>
   <div id="qtyChips" class="chipRow"></div>
 
+  <button id="copyBatchBtn" onclick="copyBatch()">Copy Batch (Product Codes)</button>
+  <button class="dangerBtn" onclick="clearStaffData()">Clear All Data for This Staff</button>
+
+  <div id="itStatus" style="display:none;margin-top:15px;padding:10px;border-radius:8px;text-align:center"></div>
+
   <div class="tableWrap">
     <table>
       <thead>
@@ -110,11 +115,6 @@
     </table>
   </div>
   <div id="itEmpty" class="empty" style="display:none">No entries.</div>
-
-  <button id="copyBatchBtn" onclick="copyBatch()">Copy Batch (Product Codes)</button>
-  <button class="dangerBtn" onclick="clearStaffData()">Clear All Data for This Staff</button>
-
-  <div id="itStatus" style="display:none;margin-top:15px;padding:10px;border-radius:8px;text-align:center"></div>
 </div>
 
 <script>
