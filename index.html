@@ -86,7 +86,7 @@
   <div class="rowBtns">
     <h2 style="flex:1">IT Entry</h2>
   </div>
-  <button class="refreshBtn" onclick="showITList()">&#8635; Refresh</button>
+  <button class="refreshBtn" onclick="showITList(true)">&#8635; Refresh</button>
   <div id="staffListContainer"></div>
 </div>
 
@@ -133,9 +133,21 @@ let entriesCache = [];
 
 //========================================
 // SERVER HELPERS
+// The server caches "list"/"summary" reads for ~20s (see CACHE_TTL_SECONDS
+// in Code.gs), so plain loads are fast. Pass force=true to bypass that
+// cache when the data must be current right now (manual Refresh taps).
 //========================================
-async function fetchEntries() {
-  const res = await fetch(API_URL + "?action=list");
+async function fetchSummary(force) {
+  const url = API_URL + "?action=summary" + (force ? "&nocache=1" : "");
+  const res = await fetch(url);
+  const data = await res.json();
+  if (!data.success) throw new Error(data.message || "Failed to load data.");
+  return data.staff || []; // [{ staffName, count }]
+}
+
+async function fetchStaffEntries(name, force) {
+  const url = API_URL + "?action=list&staff=" + encodeURIComponent(name) + (force ? "&nocache=1" : "");
+  const res = await fetch(url);
   const data = await res.json();
   if (!data.success) throw new Error(data.message || "Failed to load data.");
   entriesCache = data.entries || [];
@@ -151,12 +163,8 @@ async function postToServer(payload) {
   return res.json();
 }
 
-function getStaffNames() {
-  const names = [...new Set(entriesCache.map(e => e.staffName))];
-  return names.sort((a, b) => a.localeCompare(b));
-}
-
 function getEntriesForStaff(name) {
+  // entriesCache only ever holds the currently opened staff's rows
   return entriesCache.filter(e => e.staffName === name);
 }
 
@@ -199,8 +207,8 @@ async function selectDepartment(dept) {
   document.getElementById("status").style.display = "none";
   showView("view-dept-form");
   try {
-    await fetchEntries();
-    refreshStaffDatalist();
+    const staff = await fetchSummary(false);
+    refreshStaffDatalist(staff.map(s => s.staffName));
   } catch (e) {
     // datalist just won't have suggestions if this fails; not fatal
   }
@@ -210,10 +218,10 @@ function showDeptSelect() {
   showView("view-dept-select");
 }
 
-function refreshStaffDatalist() {
+function refreshStaffDatalist(names) {
   const list = document.getElementById("staffList");
   list.innerHTML = "";
-  getStaffNames().forEach(n => {
+  names.forEach(n => {
     const o = document.createElement("option");
     o.value = n;
     list.appendChild(o);
@@ -276,30 +284,29 @@ function showStatus(el, success, message) {
 //========================================
 // IT ENTRY: STAFF LIST
 //========================================
-async function showITList() {
+async function showITList(force) {
   showView("view-it-list");
   const container = document.getElementById("staffListContainer");
   container.innerHTML = '<div class="loading">Loading...</div>';
 
+  let staff;
   try {
-    await fetchEntries();
+    staff = await fetchSummary(!!force);
   } catch (e) {
     container.innerHTML = '<div class="empty">Could not load data. Check your connection and tap Refresh.</div>';
     return;
   }
 
   container.innerHTML = "";
-  const names = getStaffNames();
 
-  if (names.length === 0) {
+  if (staff.length === 0) {
     container.innerHTML = '<div class="empty">No submissions yet.</div>';
   } else {
-    names.forEach(name => {
-      const count = getEntriesForStaff(name).length;
+    staff.forEach(s => {
       const b = document.createElement("button");
       b.className = "listItem";
-      b.innerHTML = escapeHtml(name) + '<span class="count">' + count + "</span>";
-      b.onclick = () => openStaffDetail(name);
+      b.innerHTML = escapeHtml(s.staffName) + '<span class="count">' + s.count + "</span>";
+      b.onclick = () => openStaffDetail(s.staffName);
       container.appendChild(b);
     });
   }
@@ -308,12 +315,25 @@ async function showITList() {
 //========================================
 // IT ENTRY: STAFF DETAIL
 //========================================
-function openStaffDetail(name) {
+async function openStaffDetail(name) {
   currentStaff = name;
   currentQtyFilter = null;
   document.getElementById("itStaffName").textContent = name;
   document.getElementById("itStatus").style.display = "none";
+  document.getElementById("qtyChips").innerHTML = "";
+  document.getElementById("entryRows").innerHTML = "";
+  document.getElementById("itEmpty").style.display = "none";
   showView("view-it-detail");
+
+  try {
+    await fetchStaffEntries(name, false);
+  } catch (e) {
+    document.getElementById("itStatus").style.display = "block";
+    document.getElementById("itStatus").className = "error";
+    document.getElementById("itStatus").innerHTML = "\u2717 Could not load entries. Check your connection.";
+    return;
+  }
+
   renderStaffDetail(false);
 }
 
@@ -322,7 +342,7 @@ async function renderStaffDetail(refetch) {
     document.getElementById("entryRows").innerHTML = "";
     document.getElementById("itEmpty").style.display = "none";
     try {
-      await fetchEntries();
+      await fetchStaffEntries(currentStaff, true);
     } catch (e) {
       document.getElementById("itStatus").style.display = "block";
       document.getElementById("itStatus").className = "error";
