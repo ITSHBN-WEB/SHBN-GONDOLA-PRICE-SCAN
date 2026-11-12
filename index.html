@@ -43,6 +43,11 @@
   th{color:#555;font-size:12px;text-transform:none}
   .tableWrap{overflow-x:auto}
 
+  /* product code input with Submit beside it */
+  .inputRow{display:flex;gap:8px;align-items:stretch;margin-top:5px}
+  .inputRow input{flex:1;min-width:0;margin-top:0}
+  .inputRow button{width:auto;min-width:120px;margin-top:0;padding:0 18px;white-space:nowrap}
+
   .backBtn{background:#666;margin-bottom:0}
   .rowBtns{display:flex;gap:8px}
   .rowBtns button{margin-top:0}
@@ -71,12 +76,13 @@
   <datalist id="staffList"></datalist>
 
   <label>Product Code</label>
-  <input id="productCode" autocomplete="off">
+  <div class="inputRow">
+    <input id="productCode" autocomplete="off">
+    <button id="submitBtn" onclick="submitForm()">Submit</button>
+  </div>
 
   <label>Quantity</label>
   <input id="quantity" type="number" value="1" min="1">
-
-  <button id="submitBtn" onclick="submitForm()">Submit</button>
 
   <div id="status"></div>
 </div>
