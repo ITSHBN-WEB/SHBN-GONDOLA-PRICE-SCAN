@@ -306,7 +306,7 @@
 
   <label>Product Code</label>
   <div class="inputRow">
-    <input id="productCode" autocomplete="off">
+    <input id="productCode" autocomplete="off" inputmode="numeric" pattern="[0-9]*">
     <button id="submitBtn" onclick="submitForm()">Submit</button>
   </div>
   <div class="readout" id="codeReadout">
@@ -513,8 +513,14 @@ function formatCode(v) {
   return /^\d{13}$/.test(v) ? v.slice(0, 1) + " " + v.slice(1, 7) + " " + v.slice(7) : v;
 }
 
+const MAX_CODE_LENGTH = 13;
+
 function updateReadout() {
-  const v = document.getElementById("productCode").value.trim();
+  // digits only, max 13: also cleans up pasted text and scanner input
+  const input = document.getElementById("productCode");
+  const clean = input.value.replace(/\D/g, "").slice(0, MAX_CODE_LENGTH);
+  if (input.value !== clean) input.value = clean;
+  const v = clean;
   const box = document.getElementById("codeReadout");
   const text = document.getElementById("codeText");
   const meta = document.getElementById("codeMeta");
@@ -548,6 +554,10 @@ async function submitForm() {
   if (productCode === "") {
     setScan("error", "Missing details", 2500);
     return showStatus(status, false, "Please scan Product Code.");
+  }
+  if (!/^\d{1,13}$/.test(productCode)) {
+    setScan("error", "Invalid code", 2500);
+    return showStatus(status, false, "Product Code must be numbers only, up to 13 digits.");
   }
   if (!(quantity > 0)) {
     setScan("error", "Missing details", 2500);
